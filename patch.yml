@@ -1,0 +1,71 @@
+---
+ - name: Updating security patches on servers
+   hosts: all
+
+   handlers:
+
+     - name: Apply_update_ubuntu
+       shell: "{{ item }}"
+       with_items:
+           - sudo apt-get update
+           - sudo apt-get upgrade
+           - sudo DEBIAN_FRONTEND='noninteractive' apt-get -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' dist-upgrade
+       
+     - name: Apply_update_Centos_amzon_REHL
+       shell: "{{ item }}"
+       with_items:
+           - sudo yum update -y
+
+     - name: restart_server
+       shell: sudo shutdown -r -t 5
+       async: 1
+       poll: 1
+       ignore_errors: true
+
+     - name: wait
+       local_action: wait_for port=22 host="{{ inventory_hostname }}" delay=80
+
+   tasks:
+
+     - name: Checking_Packges
+       command: yum check-update
+       register: result_out
+       ignore_errors: yes
+
+     - name: updating Change request
+       local_action: shell echo " Change Request Number for This Activity {{ sr_number }} " > /home/ec2-user/logs/sr_logs
+  
+     - name: Applying packges on Ubuntu servers
+       local_action: shell echo "{{ inventory_hostname }}, Patched" >> /home/ec2-user/logs/patched_logs
+       notify:
+         - Apply_update_ubuntu
+       when: ansible_distribution == 'Ubuntu' 
+       ignore_errors: true
+       
+     - name: Applying update on CentosAndRHEL
+       local_action: shell echo "{{ inventory_hostname }}, Patched" >> /home/ec2-user/logs/patched_log
+       notify:
+         - Apply_update_Centos_amzon_REHL
+         - restart_server
+         - wait
+       when: ansible_distribution == "CentOS" and  result_out.rc == 100
+       ignore_errors: true
+ 
+     - meta: flush_handlers
+     
+#     - name: updating Change request
+#       local_action: shell echo " {{ sr_number }}" > /home/ec2-user/logs/sr_logs
+
+
+     - name: Copy logs to S3 buckets
+       shell: aws s3 cp /home/ec2-user/logs/ s3://aniketbucket/logs --recursive
+       run_once: true
+       delegate_to: localhost
+ 
+#     - name: Rebooting Servers
+#       local_action: shell echo "{{ inventory_hostname }}, Patched" >> /home/ec2-user/Patched_log
+#       notify:
+#         - restart_server
+#         - wait
+#       when:    
+#       ignore_errors: true
