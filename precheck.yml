@@ -1,0 +1,23 @@
+---
+ - name: Updating security patches on servers
+   hosts: all
+
+
+   tasks:
+
+     - name: Checking_Packges
+       command: yum check-update
+       register: result_out
+       ignore_errors: yes
+
+       
+     - name: Checking available packges list 
+       local_action: shell echo "Server IP {{ inventory_hostname }} and below are packages available for update {{ result_out.stdout }}" >> /home/ec2-user/logs/packages_list
+       when: ansible_distribution == "CentOS" and  result_out.rc == 100
+       ignore_errors: true
+     
+     - name: Copy logs to S3 buckets
+       shell: aws s3 cp /home/ec2-user/logs/packages_list s3://aniketbucket
+       run_once: true
+       delegate_to: localhost
+ 
